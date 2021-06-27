@@ -1,0 +1,513 @@
+The server 99% uses GET in API rather than POST,
+POST is only used in uploading files.
+
+The server uses Kestrel with the port of 5001.
+For example, https://mrchewitsoftware.com.my:5001
+
+Each base url for calling API was(RSA 4096 bits CA signed Certificate)[It can have changes before "/api/" if developer knows 
+how to deploy ASP.Net Core Application in their VPS]:
+https://mrchewitsoftware.com.my:5001/api/
+
+Note: All these API calling for establishing ephemeral TLS was using GET,
+unless specified, 99% of the data must first be converted into Base64 encoding that
+must be compatible with C# then the Base64 encoded value must be converted into
+URL safe format that must also be compatible with C#.
+
+Encryption: Unless specified, all encryption will be using stream cipher with MAC(XSalsa20Poly1305) that comes along with libsodium.
+
+Digital Signature: Unless specified, all signature will be using ED25519 that comes along with libsodium.
+
+Signed: Unless specified, any data/value that has this name in it will be using ED25519 to sign.
+
+Glossary: 
+I.ECDSA = ED25519
+II.ECDH = X25519
+
+API Call Note:
+I.Each API calls under the "Call:" must require to put it as a String and the "+" acts as a String concatenation or appending or combine.
+II. Each GET API was using query string to perform operation on server side
+
+=====================================================================================================================================================================
+Establishing Ephemeral TLS(Transport Layer Security)
+
+1. Calling server to generate handshake data
+Call: Base_URL + ECDH_ECDSA_TempSession/ + byID?ClientPathID=value
+
+Note: In PriSec FileStorage Client Application, the ClientPathID was always an ASCII string(excluding any special symbols) that generated randomly and uniquely.
+
+Why: This is to prevent the same ClientPathID was being used, hence the clientpathID must be unique.
+
+Model Returns:
+ECDH_ECDSA_Models(Refers to this link for more information)
+[https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/ECDH_ECDSA_Models.cs]
+
+Success returns:
+-ECDH_SPK_Base64String= A Base64 string value that represents the server signed ECDH PK
+-ECDSA_PK_Base64String= A Base64 string value that represents the server ED25519 PK
+-ID_Checker_Message= A string value ->("You still can use the exact same client ID..."/"You have an exact client ID great~")
+
+Failed returns:
+-ID_Checker_Message
+I. "You can no longer use the exact same client ID...."
+II. "Please provide an ID"
+-ECDH_SPK_Base64String/ECDSA_PK_Base64String = A string value ->("None")
+
+Warning: In the case that client did not receive ETLS handshake server data, server by default allows client to change 3 times on the ETLS handshake server data
+
+2. Calling server to establish a handshake or TLS
+Call: Base_URL + ECDH_ECDSA_TempSession/ + ByHandShake?ClientPathID=value&SECDHPK=value&ECDSAPK=value
+
+SECDHPK(Parameter) is a signed Elliptic Curve Public Key that's used in handshake or TLS or to create a shared secret
+
+ECDSAPK/ED25519PK is an Elliptic Curve Digital Signature public key that's used in handshake to verify signed data.
+
+Warning: Developer must first call the server to generate handshake data, otherwise this wouldn't work.
+
+Success returns: A String value -> ("Successed... You have established an ephemeral shared secret with the server with man in the middle prevention...")
+
+Failed returns(All failed message starts with "Error:"):
+I. Are you an imposter trying to mimic the session?(ED25519 keypair not match)
+II. You didn't pass in correct Base64 format paramter values
+III. You didn't pass in correct URL encoded parameter value...
+IV. You don't pass in correct ClientSessionID
+V. You don't specify the client path ID
+
+3. Calling server to delete the ephemeral TLS
+Call: Base_URL + ECDH_ECDSA_TempSession/ + DeleteByClientCryptographicID?ClientPathID=value&ValidationData=value
+
+ValidationData(Parameter) is a signed random generated data.
+
+Warning: Developer must first call the server to generate handshake data, otherwise this wouldn't work.
+
+Success returns: A String value -> ("Successfully deleted....")
+
+Failed returns(All failed message starts with "Error:"):
+I. Something went wrong... Here's the error: {Error Message}
+II. Are you an imposter? ECDSA(ED25519) public key doesn't match
+III. You didn't pass in correct Base 64 encoded parameter value..
+IV. You didn't pass in correct URL encoded parameter value..
+V. Client Path does not exists or deleted...
+
+(Optional API)
+4. Calling server to check if sharedsecret is the same with the sharedsecret established on client application
+Call: Base_URL + ECDH_ECDSA_TempSession/ + BySharedSecret?ClientPathID=value&CipheredData=value&Nonce=value
+
+Parameters:
+-CipheredData is a url encoded base64 encoded random generated data that has been encrypted with ETLS shared secret
+-Nonce is a url encoded base64 encoded random generated data
+
+Warning: Developer must first call the server to generate handshake data, otherwise this wouldn't work.
+
+Dependency: Requires libsodium to work.
+
+Security Concern:
+1. There's a chance that hacker might intend to break the ETLS by either calling 1st or 3rd API
+2. There's also a chance that hacker might intend to break the ETLS by hacking into the server
+3. There's also a chance that hacker might not break the ETLS by hacking into the server but they will hack the vulnerable point which is user device
+
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+
+=====================================================================================================================================================================
+Register an anonymous account
+1. Calling server to store registration data
+Call: Base_URL + Register/ + byValues?ClientPathID=value&SignedUserID=value&SignedLoginSignedPK=value
+&SignedLoginPK=value&SignedCiphered_Recovery_Data=value
+
+Note: The PK here refers to ED25519 PK or Signed ED25519PK.
+
+Steps(Login used KeyPair): 
+A. The developer requires to generate client ED25519 KeyPair on client machine/device and store it in either byte array format or base64 string format in a file
+
+Steps(Default Account Recovery) [Some steps like B and D can be removed if developer does not wants those extra steps]
+A. The developer requires to first generate a random data
+B. The developer requires to generate random symmetric key(DON'T USE PASSWORD, as this can increase the difficulty in social engineering attacks)
+that can be used in XSalsa20Poly1305 stream cipher
+C. The developer requires to generate secret ED25519 keypair(Service Provider won't store neither public nor private key) that can be used to sign data
+D. The random data must be encrypted with XSalSa20Poly1305 symmetric key
+E. The encrypted data will then be required to signed by Secret ED25519 KeyPair.
+F. The signed encrypted data will then be required to signed with Ephemeral TLS
+G. The data will now then send to server
+
+Security Precautions(Cryptography)
+A. Because the fact that server only temporarily knows the ED25519 keypair public key for either account reset or account recovery, developer are advised to pay
+high security attention to how they store the ED25519 keypair on client devices.
+B. If developer exposes the ED25519 keypair that's used in account recovery to unwanted people, user can pretty much expect that the whole account recovery 
+functions will be put into malicious use. 
+
+Model returns:
+RegisterModel(Refers to this link for more information)
+[https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/RegisterModel.cs]
+
+Success returns:
+-Error="Congratulations: Your account has been registered ..."
+-UserIDChecker="Congratulations: This ID does not exists and this ID has been registered into our system"
+-UserIDCount="Congratulations: This ID has count of 0 in database rows"
+
+Failed returns(All failed message starts with "Error:"):
+-Error
+I. The user ID have already existed ... Use another one instead
+II. Are you an imposter? The ECDSA(ED25519) public key does not match with the values you sent..
+III. You didn't pass in correct Base 64 encoded paramter value...
+IV. You didn't pass in correct URL encoded parameter value...
+V. Path does not exists
+VI. You didn't specify a path
+-UserIDChecker
+I. Existed
+II. Not Valid
+-UserIDCount
+I. User ID Count ={Count of User ID}
+II. Not Valid
+
+Dependency: Requires libsodium to work.
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+
+=====================================================================================================================================================================
+Login to the system(Digital Signature with challenge and response login mechanism AKA passwordless login)
+1. Calling server to send signed challenge
+Call: Base_URL + Login/ + RequestBy?ClientPathID=value&SignedUserID=value&SignedAuthenticationType=value
+
+Note: The AuthenticationType that exists are only "Login,Renew Payment,Miscellaneous"
+
+Model Returns:
+LoginModels(refers to this link for more information)
+[https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/LoginModels.cs]
+
+Success returns:
+-RequestStatus= A string with value -> ("Successed: Requesting server signed random challenge succeeded")
+-UserIDChecker = A string with value -> ("Successed: This user ID exists...")
+-ServerECDSAPKBase64String= A Base64 String value that represents the server's ED25519PK
+-SignedRandomChallengeBase64String = A Base64 String value that represents a server signed random challenge
+
+Failed returns(All failed message starts with "Error:"):
+-RequestStatus
+I. Wrong API
+II. Not Valid
+III. Ephemeral ED25519 PK does not match with signed value...
+IV. You didn't pass in base64 encoded parameter value...
+V. You didn't pass in URL encoded parameter value...
+VI. The client path ID does not exists...
+VII. The client path ID is null or empty string
+-UserIDChecker
+I. This user ID does not exists
+II. Not Valid
+-ServerECDSAPKBase64String
+I. Not Valid
+-SignedRandomChallengeBase64String
+I. Not Valid
+
+2. Calling server to verify user signed challenge
+Call: Base_URL + Login/ + VerifySignatureBy?ClientPathID=value&SignedUserID=value&SignedAuthenticationType=value
+&SignedSignedRandomChallenge=value
+
+Note: Developers are required to verify the server signed challenge on their end, if it's successful, 
+with a duration no more than 7 minutes are required to send back
+a user signed challenge. If server successfully verify the user signed challenge, a success response will be send back.
+
+Warning: This can only be used to verify signed random challenge if the authentication type was Login.
+
+Success returns: A string with value ->("This random challenge has been successfully verified and have been deleted from the system")
+
+Failed returns(All failed message starts with "Error:"):
+I. This random challenge valid duration is no more valid as 7 minutes have already passed
+II. This signed random challenge does not match with plain random challenge after verification
+III. Are you an imposter trying to mimic the user?
+IV. Verified Public Key unmatch with Public Key in database
+V. Unable to verify signed public key with public key in database
+VI. Someone changes the normal/signed public key value in database to non base64 format
+VII. Wrong API
+VIII. This user ID does not exists
+IX. Cryptographic digital signatures verification failed.. (ED25519 public key verify signature failed..)
+X. You didn't pass in correct base64 encoded parameter value
+XI. You didn't pass in correct URL encoded parameter value
+XII. Client Path ID does not exists
+XIII. Client Path ID was null or empty
+
+Dependency: Requires libsodium to work.
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+
+=====================================================================================================================================================================
+Perform Account Recovery
+1. Request server to send recovery data to user
+Call: Base_URL + AccountRecovery/ + byUserID?ClientPathID=value&SignedUserID=value
+
+Success returns: A string with value of a signed and encrypted data associated with the UserID
+
+Failed returns(All failed message starts with "Error:"):
+I. This user ID does not exists
+II. Ephemeral ED25519 PK does not match with signed value...
+III. You didn't pass in base64 encoded parameter value...
+IV. You didn't pass in URL encoded parameter value...
+V. The client path ID does not exists...
+VI. The client path ID is null or empty string
+
+2. Delete user account
+Call: Base_URL + AccountRecovery/+ DeletebyUserID?ClientPathID=value&SignedUserID=value&SignedECDSAPK=value
+
+Parameters:
+-SignedECDSAPK is the recovery ED25519 KeyPair PK that exists locally in client/user device
+
+Success returns: A string with value -> ("Successed: Corresponding user ID have been deleted")
+
+Failed returns(All failed message starts with "Error:"):
+I. Someone messes the data on server side(Signed Ciphered Recovery Data failed to convert from Base64 to bytes) 
+II. Someone messes the data on server side(Signed Ciphered Recovery Data failed to verify through given ED25519 PK)
+III. This user ID does not exists
+IV. Ephemeral ED25519 PK does not match with signed value...
+V. You didn't pass in base64 encoded parameter value...
+VI. You didn't pass in URL encoded parameter value...
+VII. The client path ID does not exists...
+VIII. The client path ID is null or empty string
+
+3. Update/Reset user account
+Call: Base_URL + AccountRecovery/ + UpdatebyUserID?ClientPathID=value&SignedUserID=value&SignedECDSAPK=value
+&SignedLoginSignedPK=value&SignedLoginPK=value&SignedCiphered_Recovery_Data=value
+
+Parameters:
+-SignedLoginSignedPK is a new long term ED25519 PK that generated by user that was signed by ETLS
+-SignedLoginPK is a new same long term ED25519 PK that generated by user but does not signed by ETLS
+-SignedCiphered_Recovery_Data is a new long term ETLS signed, user signed encrypted recovery data
+
+Success returns: A string with value -> ("Successed: Corresponding user info have been updated")
+
+Failed returns:
+I. Someone messes the data on server side(Signed Ciphered Recovery Data failed to convert from Base64 to bytes)
+II. Someone messes the data on server side(Signed Ciphered Recovery Data failed to verify through given ED25519 PK)
+III. This user ID does not exists
+IV. Ephemeral ED25519 PK does not match with signed value...
+V. You didn't pass in base64 encoded parameter value...
+VI. You didn't pass in URL encoded parameter value...
+VII. The client path ID does not exists...
+VIII. The client path ID is null or empty string
+
+Dependency: Requires libsodium to work
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+
+=====================================================================================================================================================================
+Create/Verify/Renew Payment
+
+Brief Explanation on how payment can be received in Paypal:
+I. Developer requires to get API keys from PayPal
+II. Developer needs to create an order or create a payment that customer/client can access to pay money
+III. If it exists in website/web page format, the url and corresponding order/payment ID needs to send to client/user
+IV. It can happen manual(client copy the url and paste it into browser) or happen automatically(if it's website/webpage format application)
+V. Client will then be require to pay the merchant through url(mostly webpage if the merchant or developer is not PCI SS compliant)
+VI. If client have made the payment(determine by developer), then client should have access to the product if it's a subscription based product
+
+1. Create Payment(Prerequisite for verifying payment or renew payment)
+Call: Base_URL + CreateReceivePayment/
+
+Return Model:
+CheckOutPageHolderModel(refers to this link for more information)
+[https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/CheckOutPageHolderModel.cs]
+
+Success returns:
+-InvoiceID= A string value 
+-PayPalOrderID = A string value that contains the checkoutpage ID
+-CheckOutPageURL = A string value that contains the checkoutpage URL
+
+2. Verify Payment(Requires a created and paid payment)
+Call: Base_URL + CreateReceivePayment/ + CheckPayment?ClientPathID=value&CipheredSignedOrderID=value&CipheredSignedED25519PK=value
+
+Parameters:
+CipheredSignedOrderID=A random PayPal generated order ID that has first been encrypted then signed with ETLS
+CipheredSignedED25519PK = A random ED25519 PK that proves the ownership of server file storage directory that had been generated by client and
+needs to be first encrypted then signed with ETLS
+
+Return Model:
+FileCreationModel(refers to this link for more information)
+[https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/FileCreationModel.cs]
+
+Success returns:
+-FolderID= A string value that tells the client corresponding server directory/folder ID/Name
+-Status = A string value -> ("Successed: Payment has been made and corresponding IDs have been sent back")
+
+Failed returns:
+-Status= A string value(All failed message starts with "Error:")
+I. Unable to decrypt specified order ID
+II. Man in the middle spotted, are you an imposter trying to mimic the ETLS that established between server and client?(Unable to decrypt new ED25519PK)
+III. Have you really made payment?
+IV. Man in the middle spotted, are you an imposter trying to mimic the ETLS that established between server and client?
+V. Client did not pass in correct Base64 encoded String in parameter..
+VI. Client did not pass in correct URL encoded String in parameter..
+VII. The specified ETLS ID does not exists...
+VIII. Client did not specify the ETLS ID...
+-FolderID = A string value -> ("Not Valid")
+
+3. Renew Payment(Requires a created and paid payment, random challenge[With Authentication Type (Renew Payment)] that's already sent by server and known by client)
+Call: Base_URL + CreateReceivePayment/ + RenewPayment?ClientPathID=value&SignedUserID=value&CipheredSignedOrderID=value&
+CipheredSignedDirectoryID=value&SignedSignedRandomChallenge=value&CipheredSignedED25519PK=value
+
+Parameters:
+CipheredSignedDirectoryID=A random system generated server storage directory ID/name that belongs to client and needs to be first encrypted then
+signed with ETLS
+
+SignedSignedRandomChallenge=A random server generated challenge that first signs by client(the old ED25519 SK that proves the server storage directory ID/
+Name ownership) then signed by ETLS
+
+CipheredSignedED25519PK= A new random ED25519 PK that proves the ownership of server file storage directory that had been generated by client and
+needs to be first encrypted then signed with ETLS
+
+Success returns: A String with value -> ("Successed: Payment has been renewed.. and ED25519 PK of the directory has been updated")
+
+Failed returns (All failed message starts with "Error:"):
+I. Unable to decrypt ETLS signed encrypted checkout page..
+II. Unable to decrypt ETLS signed encrypted directory ID..
+III. Unable to find corresponding ED25519 PK for this particular directory..
+IV. Unable to decrypt ETLS signed encrypted new ED25519 PK..
+V. Unable to find corresponding user directory...
+VI. The signed random challenge can't be verified with the specific directory ED25519 PK
+VII. This random challenge valid duration is no more valid as 7 minutes have already passed
+VIII. This random challenge does not exists in the system..
+IX. This user ID does not exist..
+X. You haven't made payment.
+XI. Man in the middle spotted, are you an imposter trying to get over the ETLS?
+XII. Please pass in correct Base64 Encoded String in the parameter..
+XIII. Please pass in correct URL Encoded String in the parameter..
+XIV. The corresponding ETLS ID does not exists in the server..
+XV. The ETLS ID mustn't be null
+
+Dependency: Requires libsodium
+
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+=====================================================================================================================================================================
+
+=====================================================================================================================================================================
+Upload Endpoint Encrypted File/Check Endpoint Encrypted File(Chunks) Length Or Count/
+Get Endpoint Encrypted File/Delete Endpoint Encrypted File
+
+1.Upload Endpoint Encrypted File(POST Request) 
+{Requires a random challenge[With Authentication Type (Miscellaneous)] that's already sent by server and known by client)}
+{Requires the client already subscribed to the service}
+Call: Base_URL + OwnerUploadFiles
+
+Model that requires to pass to the post request:
+UploadFilesModel(refers to this link for more information) 
+[https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/UploadFilesModel.cs]
+
+Parameters:
+-CipheredSignedDirectoryID=A system generated server storage directory ID/name that has been given to client that needs to first encrypted then signed by ETLS
+
+-SignedSignedRandomChallenge= A server generated challenge that needs to first signed by client ED25519 SK that proves the ownership of the
+server storage directory ID/Name then sign again with ETLS ED25519 SK
+
+-SignedUniqueFileName=A system generated unique file name(ASCII without special chars) that has nothing to do with the original filename and its extension
+which was used to create a sub folder/directory under the server directory ID/Name that owns by client that stores the endpoint encrypted file content(s), it needs
+to be signed with ETLS
+
+-SignedCipheredFileContent = File content that has been encrypted locally then signed(user device), ED25519 KeyPair(both private and public) not known to server,
+the encryption key was also not known to server. The endpoint encrypted signed file content will then be required to sign with ETLS.
+
+Success returns: 
+A string with value -> "Successed: File has been uploaded.."
+
+Failed returns(All failed message starts with "Error:"):
+A string with either one of these values
+I. Unable to decrypt directory ID
+II. The specified main directory does not exist in the system
+III. The specified main directory ED25519 PK does not exist in the system
+IV. The signed random challenge can't be verified by the specified directory ED25519 PK
+V.  This random challenge valid duration is no more valid as 7 minutes have already passed
+VI. The specified random challenge does not exist in the system
+VII. The specified user ID does not exists in the system
+VIII. The directory have used up 1 GB
+IX. You no longer own this rent directory/folder
+XI. Man in the middle spotted do you intend to mimic the ETLS Session that established between server and client?
+XII. Please pass in correct Base64 encoded String in parameter
+XIII. Please pass in correct URL encoded String in parameter..
+XIV. The specified ETLS ID does not exist in the system
+XV. Client did not specify an ETLS ID
+XVI. Please pass the Files Model correctly through Post
+
+Default way of performing endpoint encryption on each of the file chunks:
+A random byte array that acts as a key material was used in encryption through XSalsa20Poly1305 cipher then sign the
+encrypted file content with a random ED25519 KeyPair's private key.
+These 3 different keys are then stored in different text file locally on client device.
+
+Default chunk size:
+5 MB
+
+Server Maximum allowed chunk size:
+8MB
+
+2.Check Endpoint Encrypted File(Chunks) Length Or Count
+Call: Base_URL + OwnerUploadFiles/+ GetEndpointEncryptedFileContentCount?ClientPathID=value&SignedUserID=value&CipheredSignedDirectoryID=value
+&SignedSignedRandomChallenge=Value&SignedUniqueFileName=Value
+
+Success returns: A string with the encrypted file content chunks length
+
+Failed returns(All failed message starts with "Error:"):
+A string with either one of these values
+I. Unable to decrypt the encrypted directory ID
+II. The specified main directory does not contain ED25519 PK
+III. The specified main directory does not exists..
+IV. Are you an imposter trying to mimic the directory's owner?(Failed to verify the challenge through ED25519PK resides in the directory)
+V. The specified encrypted file content folder does not exists in the server..
+VI.  This random challenge valid duration is no more valid as 7 minutes have already passed
+VII. The specified random challenge does not exist in the system
+VIII. The specified user ID does not exists in the system
+IX. You no longer own this rent directory/folder
+XI. Man in the middle spotted do you intend to mimic the ETLS Session that established between server and client?
+XII. Please pass in correct Base64 encoded String in parameter
+XIII. Please pass in correct URL encoded String in parameter..
+XIV. The specified ETLS ID does not exist in the system
+XV. Client did not specify an ETLS ID 
+
+3.Get Endpoint Encrypted File
+Call: Base_URL + OwnerUploadFiles/+ GetEndpointEncryptedFile?ClientPathID=value&SignedUserID=value&CipheredSignedDirectoryID=value
+&SignedSignedRandomChallenge=Value&SignedUniqueFileName=Value&FileContentCount=value
+
+Parameters:
+-FileContentCount= An integer value(that starts from 1) that acts as an index to let the server knows exactly which encrypted file content are the developer/
+client looking for. 
+
+Success returns: A base64 encrypted file content string 
+
+Failed returns(All failed message starts with "Error:"):
+A string with either one of these values
+I. Unable to decrypt main directory through specified ETLS shared secret
+II. Unable to find corresponding directory's ED25519PK
+III. The specified folder does not exist
+IV. Are you an imposter trying to represents this directory owner? (ED25519 failed to verify challenge)
+V. The specified main folder/encrypted file folder does not exists in the system
+VI. Failed to read file, is the file name or directory ID correct?
+VII. This random challenge valid duration is no more valid as 7 minutes have already passed
+VIII. The specified random challenge does not exist in the system
+IX. The specified user ID does not exists in the system
+X. You no longer own this rent directory/folder
+XI. Man in the middle spotted do you intend to mimic the ETLS Session that established between server and client?
+XII. Please pass in correct Base64 encoded String in parameter
+XIII. Please pass in correct URL encoded String in parameter..
+XIV. The specified ETLS ID does not exist in the system
+
+4.Delete Endpoint Encrypted File
+Call:Base_URL + OwnerUploadFiles/+ DeleteEndpointEncryptedFile?ClientPathID=value&SignedUserID=value&CipheredSignedDirectoryID=value
+&SignedSignedRandomChallenge=Value&SignedUniqueFileName=Value
+
+Success returns: A string with value -> "File successfully deleted"
+
+Failed returns(All failed message starts with "Error:"):
+A string with either one of these values
+I. Unable to decrypt the specified main directory through ETLS shared secret
+II. The ED25519PK does not exists in the specified directory..
+III. The main directory that you specified does not exist in the system
+IV. Failed to verify the random challenge with the specified directory ID ED25519 PK
+V. This unique random generated file name does not exists in the server..
+VI. This random challenge valid duration is no more valid as 7 minutes have already passed
+VII. The specified random challenge does not exist in the system
+VIII. The specified user ID does not exists in the system
+IX. You no longer own this rent directory/folder
+X. Man in the middle spotted do you intend to mimic the ETLS Session that established between server and client?
+XI. Please pass in correct Base64 encoded String in parameter
+XII. Please pass in correct URL encoded String in parameter..
+XIII. The specified ETLS ID does not exist in the system
+
+Dependency: Requires libsodium
