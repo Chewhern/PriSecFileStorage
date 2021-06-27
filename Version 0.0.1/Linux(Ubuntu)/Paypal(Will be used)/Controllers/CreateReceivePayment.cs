@@ -262,6 +262,7 @@ namespace PriSecFileStorageAPI.Controllers
             }
         }
 
+
         [HttpGet("RenewPayment")]
         public String RenewPayment(String ClientPathID, String SignedUserID ,String CipheredSignedOrderID, String CipheredSignedDirectoryID , String SignedSignedRandomChallenge ,String CipheredSignedED25519PK)
         {
@@ -365,7 +366,7 @@ namespace PriSecFileStorageAPI.Controllers
                                     MyGeneralGCHandle = GCHandle.Alloc(ClientECDSAPKByte, GCHandleType.Pinned);
                                     SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientECDSAPKByte.Length);
                                     MyGeneralGCHandle.Free();
-                                    return "Error: Unable to decrypt ETLS signed encrypted checkout page..";
+                                    return "Error: Unable to decrypt ETLS signed order ID..";
                                 }
                                 OrderID = Encoding.UTF8.GetString(PlainText);
                                 try
@@ -411,22 +412,6 @@ namespace PriSecFileStorageAPI.Controllers
                                         return "Error: Unable to decrypt ETLS signed encrypted directory ID..";
                                     }
                                     UniqueUserFileStorageID = Encoding.UTF8.GetString(PlainText);
-                                    PlainText = new Byte[] { };
-                                    NonceByte = new Byte[SodiumSecretBox.GenerateNonce().Length];
-                                    try
-                                    {
-                                        PlainText = SodiumSecretBox.Open(CipheredText, NonceByte, SharedSecret);
-                                    }
-                                    catch
-                                    {
-                                        MyGeneralGCHandle = GCHandle.Alloc(SharedSecret, GCHandleType.Pinned);
-                                        SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), SharedSecret.Length);
-                                        MyGeneralGCHandle.Free();
-                                        MyGeneralGCHandle = GCHandle.Alloc(ClientECDSAPKByte, GCHandleType.Pinned);
-                                        SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientECDSAPKByte.Length);
-                                        MyGeneralGCHandle.Free();
-                                        return "Error: Unable to decrypt ETLS signed encrypted payment ID..";
-                                    }
                                     try 
                                     {
                                         FileED25519PK = System.IO.File.ReadAllBytes(FileStoragePath + UniqueUserFileStorageID + "/" + "rootPK.txt");
