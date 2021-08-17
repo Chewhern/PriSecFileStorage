@@ -132,7 +132,7 @@ but not decrypt it.
 
 The access can only be granted if the file owner puts digital signature public key of the
 other user to the server. As usual, the login mechanism like SSH key or digital signature
-with challenge and respond mechanism can be used to authenticate with the server.
+with challenge and respond mechanism is used to authenticate with the server.
 
 If and only the file owner puts public key to the server and the user authenticate themselves
 with the server, else the file access request will be denied.
