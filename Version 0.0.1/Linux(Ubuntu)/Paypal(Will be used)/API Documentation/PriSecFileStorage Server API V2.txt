@@ -9,9 +9,8 @@ how to deploy ASP.Net Core Application in their VPS]:
 https://mrchewitsoftware.com.my:5001/api/
 
 Note: All these API calling for establishing ephemeral TLS was using GET,
-unless specified, 99% of the data must first be converted into Base64 encoding that
-must be compatible with C# then the Base64 encoded value must be converted into
-URL safe format that must also be compatible with C#.
+unless specified, 99% of the data must first encoded with Base64 encoding then
+encode with URL encoding.
 
 Encryption: Unless specified, all encryption will be using stream cipher with MAC(XSalsa20Poly1305) that comes along with libsodium.
 
@@ -40,6 +39,13 @@ Why: This is to prevent the same ClientPathID was being used, hence the clientpa
 Model Returns:
 ECDH_ECDSA_Models(Refers to this link for more information)
 [https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/ECDH_ECDSA_Models.cs]
+
+Sample Return JSON Data/String:
+{
+    "ECDSA_PK_Base64String":"{Base64 encoded String}",
+    "ECDH_PK_Base64String":"{Base64 encoded String}",
+    "ID_Checker_Message":"{ASCII String}"
+}
 
 Success returns:
 -ECDH_SPK_Base64String= A Base64 string value that represents the server signed ECDH PK
@@ -140,6 +146,13 @@ Model returns:
 RegisterModel(Refers to this link for more information)
 [https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/RegisterModel.cs]
 
+Sample return JSON Data/String:
+{
+    "UserIDCount":"{ASCII String}",
+    "UserIDChecker":"{ASCII String}",
+    "Error":"{ASCII String}"
+}
+
 Success returns:
 -Error="Congratulations: Your account has been registered ..."
 -UserIDChecker="Congratulations: This ID does not exists and this ID has been registered into our system"
@@ -175,6 +188,14 @@ Note: The AuthenticationType that exists are only "Login,Renew Payment,Miscellan
 Model Returns:
 LoginModels(refers to this link for more information)
 [https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/LoginModels.cs]
+
+Sample return JSON Data/String:
+{
+    "RequestStatus":"{ASCII String}",
+    "UserIDChecker":"{ASCII String}",
+    "ServerECDSAPKBase64String","{Base64 encoded String}",
+    "SignedRandomChallengeBase64String":"{Base64 encoded String}"
+}
 
 Success returns:
 -RequestStatus= A string with value -> ("Successed: Requesting server signed random challenge succeeded")
@@ -308,6 +329,13 @@ Return Model:
 CheckOutPageHolderModel(refers to this link for more information)
 [https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/CheckOutPageHolderModel.cs]
 
+Sample return JSON Data/String:
+{
+    "PayPalOrderID":"{ASCII String}",
+    "CheckOutPageURL":"{ASCII String}",
+    "InvoiceID":{ASCII String}
+}
+
 Success returns:
 -InvoiceID= A string value 
 -PayPalOrderID = A string value that contains the checkoutpage ID
@@ -324,6 +352,12 @@ needs to be first encrypted then signed with ETLS
 Return Model:
 FileCreationModel(refers to this link for more information)
 [https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/FileCreationModel.cs]
+
+Sample return JSON Data/String:
+{
+    "Status":"{ASCII String}",
+    "FolderID":"{ASCII String}"
+}
 
 Success returns:
 -FolderID= A string value that tells the client corresponding server directory/folder ID/Name
@@ -393,8 +427,19 @@ Model that requires to pass to the post request:
 UploadFilesModel(refers to this link for more information) 
 [https://github.com/Chewhern/PriSecFileStorage/blob/main/Version%200.0.1/Linux(Ubuntu)/Paypal(Will%20be%20used)/UploadFilesModel.cs]
 
+Sample POST JSON Data/String:
+{
+    "ClientPathID":"{ASCII String}",
+    "SignedUserID":"{ASCII String}",
+    "CipheredSignedDirectoryID":"{Base64 encoded String}",
+    "SignedSignedRandomChallenge":"{Base64 encoded String}",
+    "SignedUniqueFileName":"{Base64 encoded String}",
+    "SignedCipheredSignedFileContent":"{Base64 encoded String}"
+}
+
 Parameters:
--CipheredSignedDirectoryID=A system generated server storage directory ID/name that has been given to client that needs to first encrypted then signed by ETLS
+-CipheredSignedDirectoryID=A system generated server storage directory ID/name that has been given to client after payment made
+that needs to first encrypted then signed by ETLS
 
 -SignedSignedRandomChallenge= A server generated challenge that needs to first signed by client ED25519 SK that proves the ownership of the
 server storage directory ID/Name then sign again with ETLS ED25519 SK
@@ -403,7 +448,7 @@ server storage directory ID/Name then sign again with ETLS ED25519 SK
 which was used to create a sub folder/directory under the server directory ID/Name that owns by client that stores the endpoint encrypted file content(s), it needs
 to be signed with ETLS
 
--SignedCipheredFileContent = File content that has been encrypted locally then signed(user device), ED25519 KeyPair(both private and public) not known to server,
+-SignedCipheredSignedFileContent = File content that has been encrypted locally then signed(user device), ED25519 KeyPair(both private and public) not known to server,
 the encryption key was also not known to server. The endpoint encrypted signed file content will then be required to sign with ETLS.
 
 Success returns: 
