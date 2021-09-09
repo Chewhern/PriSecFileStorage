@@ -30,6 +30,7 @@ namespace PriSecFileStorageAPI
                     webBuilder.UseStartup<Startup>();
                     webBuilder.ConfigureKestrel(serverOptions =>
                     {
+                        //You can put in any port number you want
                         serverOptions.Listen(IPAddress.Parse("0.0.0.0"), 5001,
                             listenOptions =>
                             {
