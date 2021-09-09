@@ -321,7 +321,6 @@ namespace PriSecFileStorageAPI.Controllers
                                 SharedSecret = SodiumScalarMult.Mult(ECDHSK, ClientECDHPK);
                                 System.IO.File.WriteAllBytes(Path + "/" + "SharedSecret.txt", SharedSecret);
                                 System.IO.File.WriteAllBytes(Path + "/" + "ClientECDSAPK.txt", ClientECDSAPK);
-                                System.IO.File.Delete(Path + "/" + "ECDHSK.txt");
                                 SessionStatus = "Successed... You have established an ephemeral shared secret with the server with man in the middle prevention...";
                             }
                             else 
