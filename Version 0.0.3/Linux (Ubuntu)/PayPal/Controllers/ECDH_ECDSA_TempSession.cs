@@ -114,19 +114,42 @@ namespace PriSecFileStorageAPI.Controllers
             }
             ServerECDHKeyPair.Clear();
             ServerECDSAKeyPair.Clear();
-            GCHandle MyGeneralGCHandle = GCHandle.Alloc(ClientPathID, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientPathID.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(Path, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), Path.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ServerECDSAPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ServerECDSAPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ServerECDHSPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ServerECDHSPK.Length);
-            MyGeneralGCHandle.Free();
             return MyECDH_ECDSA_Models;
+        }
+
+        [HttpGet("InitiateDeletionOfETLS")]
+        public String InitiateDeletionOfETLS(String ClientPathID)
+        {
+            String Status = "";
+            String Path = "{Path to ETLS}";
+            Path += ClientPathID;
+            Byte[] RVDataByte = new Byte[] { };
+            Boolean IsValidationDataExist = true;
+            DateTime ExpirationUTC8Time = new DateTime();
+            if (Directory.Exists(Path))
+            {
+                try 
+                {
+                    RVDataByte = System.IO.File.ReadAllBytes(Path + "/RVData.txt");
+                }
+                catch 
+                {
+                    IsValidationDataExist = false;
+                    Status = "Error: You have not yet check if your shared secret is the same as server's";
+                }
+                if (IsValidationDataExist == true) 
+                {
+                    System.IO.File.WriteAllText(Path + "/IDStatus.txt", "Initiating Deletion Of ETLS");
+                    ExpirationUTC8Time = DateTime.UtcNow.AddHours(8);
+                    System.IO.File.SetLastWriteTime(Path + "/IDStatus.txt", ExpirationUTC8Time);
+                    Status = "Success: You initiated a deletion of ETLS";
+                }
+            }
+            else
+            {
+                Status = "Error: Client Path does not exists or deleted...";
+            }
+            return Status;
         }
 
         [HttpGet("DeleteByClientCryptographicID")]
@@ -139,9 +162,14 @@ namespace PriSecFileStorageAPI.Controllers
             Boolean DecodingBoolean = true;
             Boolean VerifyBoolean = true;
             Boolean ConvertFromBase64Boolean = true;
+            Boolean IsValidationDataExist = true;
             String DecodedValidationDataString = "";
             Byte[] ValidationDataByte = new Byte[] { };
             Byte[] ValidatedDataByte = new Byte[] { };
+            Byte[] RVDataByte = new Byte[] { };
+            DateTime SystemDateTime = new DateTime();
+            DateTime CurrentDateTime = new DateTime();
+            TimeSpan Duration = new TimeSpan();
             if (Directory.Exists(Path))
             {
                 ClientECDSAPK = System.IO.File.ReadAllBytes(Path + "/" + "ClientECDSAPK.txt");
@@ -174,27 +202,59 @@ namespace PriSecFileStorageAPI.Controllers
                     {
                         try 
                         {
-                            ValidatedDataByte = SodiumPublicKeyAuth.Verify(ValidationDataByte, ClientECDSAPK);
+                            SystemDateTime = System.IO.File.GetLastWriteTime(Path + "/IDStatus.txt");
                         }
                         catch 
                         {
-                            VerifyBoolean = false;
+                            IsValidationDataExist = false;
                         }
-                        if (VerifyBoolean == true) 
+                        if (IsValidationDataExist == true) 
                         {
+                            RVDataByte = System.IO.File.ReadAllBytes(Path + "/RVData.txt");
                             try
                             {
-                                Directory.Delete(Path, true);
-                                Status = "Successfully deleted....";
+                                ValidatedDataByte = SodiumPublicKeyAuth.Verify(ValidationDataByte, ClientECDSAPK);
                             }
-                            catch (Exception ex)
+                            catch
                             {
-                                Status = "Error: Something went wrong... Here's the error: " + ex.ToString();
+                                VerifyBoolean = false;
+                            }
+                            if (VerifyBoolean == true)
+                            {
+                                if (ValidatedDataByte.SequenceEqual(RVDataByte) == true) 
+                                {
+                                    CurrentDateTime = DateTime.UtcNow.AddHours(8);
+                                    Duration = CurrentDateTime.Subtract(SystemDateTime);
+                                    if (Duration.TotalMinutes < 8)
+                                    {
+                                        try
+                                        {
+                                            Directory.Delete(Path, true);
+                                            Status = "Successfully deleted....";
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Status = "Error: Something went wrong... Here's the error: " + ex.ToString();
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Status = "Error: You need to reinitiate the deletion request of ETLS";
+                                    }
+                                }
+                                else 
+                                {
+                                    Status = "Error: The random validation data stored on server is unmatch with the validation data you submit";
+                                }
+                            }
+                            else
+                            {
+                                Status = "Error: Are you an imposter? ECDSA(ED25519) public key doesn't match";
                             }
                         }
                         else 
                         {
-                            Status = "Error: Are you an imposter? ECDSA(ED25519) public key doesn't match";
+                            Status = "Error: You have not yet initiate an ETLS delete request";
                         }
                     }
                     else 
@@ -211,27 +271,6 @@ namespace PriSecFileStorageAPI.Controllers
             {
                 Status = "Error: Client Path does not exists or deleted...";
             }
-            GCHandle MyGeneralGCHandle = GCHandle.Alloc(ClientECDSAPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientECDSAPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ValidationData, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ValidationData.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(DecodedValidationDataString, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), DecodedValidationDataString.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ValidationDataByte, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ValidationDataByte.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ValidatedDataByte, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ValidatedDataByte.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ClientPathID, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientPathID.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(Path, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), Path.Length);
-            MyGeneralGCHandle.Free();
             return Status;
         }
 
@@ -347,58 +386,31 @@ namespace PriSecFileStorageAPI.Controllers
             {
                 SessionStatus = "Error: You don't specify the client path ID";
             }
-            GCHandle MyGeneralGCHandle = GCHandle.Alloc(ECDHSK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ECDHSK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ClientECDSAPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientECDSAPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ClientSignedECDHPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientSignedECDHPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(SECDHPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), SECDHPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ECDSAPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ECDSAPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(DecodedSECDHPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), DecodedSECDHPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(DecodedECDSAPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), DecodedECDSAPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ClientPathID, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientPathID.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(Path, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), Path.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(ClientECDHPK, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), ClientECDHPK.Length);
-            MyGeneralGCHandle.Free();
-            MyGeneralGCHandle = GCHandle.Alloc(SharedSecret, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), SharedSecret.Length);
-            MyGeneralGCHandle.Free();
+            SodiumSecureMemory.SecureClearBytes(ECDHSK);
+            SodiumSecureMemory.SecureClearBytes(SharedSecret);
             return SessionStatus;
         }
 
         [HttpGet("BySharedSecret")]
-        public String CheckSharedSecret(String ClientPathID,String CipheredData , String Nonce) 
+        public String CheckSharedSecret(String ClientPathID,String CipheredData , String Nonce, String RVData) 
         {
             String CheckSharedSecretStatus = "";
             Byte[] SharedSecret = new Byte[] { };
             Byte[] CipheredDataByte = new Byte[] { };
             Byte[] NonceByte = new Byte[] { };
+            Byte[] RVDataByte = new Byte[] { };
             Byte[] TestDecryptedByte = new Byte[] { };
             String Path = "{Path to ETLS}";
             Path += ClientPathID;
             String DecodedCipheredData = "";
             String DecodedNonce = "";
+            String DecodedRVData = "";
             Boolean URLDecodeChecker1 = true;
             Boolean URLDecodeChecker2 = true;
+            Boolean URLDecodeChecker3 = true;
             Boolean Base64StringChecker1 = true;
             Boolean Base64StringChecker2 = true;
+            Boolean Base64StringChecker3 = true;
             if (ClientPathID != null && ClientPathID.CompareTo("") != 0)
             {
                 if (Directory.Exists(Path))
@@ -434,7 +446,22 @@ namespace PriSecFileStorageAPI.Controllers
                     {
                         URLDecodeChecker2 = false;
                     }
-                    if(URLDecodeChecker1 == true && URLDecodeChecker2 == true) 
+                    try
+                    {
+                        if (RVData.Contains("+"))
+                        {
+                            DecodedRVData = RVData;
+                        }
+                        else
+                        {
+                            DecodedRVData = HttpUtility.UrlDecode(RVData);
+                        }
+                    }
+                    catch
+                    {
+                        URLDecodeChecker3 = false;
+                    }
+                    if (URLDecodeChecker1 == true && URLDecodeChecker2 == true && URLDecodeChecker3==true) 
                     {
                         try 
                         {
@@ -452,7 +479,15 @@ namespace PriSecFileStorageAPI.Controllers
                         {
                             Base64StringChecker2 = false;
                         }
-                        if(Base64StringChecker1==true && Base64StringChecker2 == true) 
+                        try 
+                        {
+                            RVDataByte = Convert.FromBase64String(DecodedRVData);
+                        }
+                        catch 
+                        {
+                            Base64StringChecker3 = false;
+                        }
+                        if(Base64StringChecker1==true && Base64StringChecker2 == true && Base64StringChecker3==true) 
                         {
                             try 
                             {
@@ -463,6 +498,7 @@ namespace PriSecFileStorageAPI.Controllers
                             {
                                 CheckSharedSecretStatus = "Error: The shared secret does not match";
                             }
+                            System.IO.File.WriteAllBytes(Path + "/RVData.txt",RVDataByte);
                         }
                         else 
                         {
@@ -483,9 +519,7 @@ namespace PriSecFileStorageAPI.Controllers
             {
                 CheckSharedSecretStatus = "Error: You don't specify the client path ID";
             }
-            GCHandle MyGeneralGCHandle = GCHandle.Alloc(SharedSecret, GCHandleType.Pinned);
-            SodiumSecureMemory.MemZero(MyGeneralGCHandle.AddrOfPinnedObject(), SharedSecret.Length);
-            MyGeneralGCHandle.Free();
+            SodiumSecureMemory.SecureClearBytes(SharedSecret);
             return CheckSharedSecretStatus;
         }
     }
