@@ -120,35 +120,43 @@ namespace PriSecFileStorageAPI.Controllers
         public String InitiateDeletionOfETLS(String ClientPathID)
         {
             String Status = "";
+            String Result = "";
             String Path = "{Path to ETLS}";
             Path += ClientPathID;
-            Byte[] RVDataByte = new Byte[] { };
-            Boolean IsValidationDataExist = true;
+            Byte[] RVDataByte = SodiumRNG.GetRandomBytes(128);
+            Boolean CheckIfRVDataFileExists = true;
             DateTime ExpirationUTC8Time = new DateTime();
             if (Directory.Exists(Path))
             {
-                try 
+                if (System.IO.File.Exists(Path + "/Confirmation.txt") == true) 
                 {
-                    RVDataByte = System.IO.File.ReadAllBytes(Path + "/RVData.txt");
+                    CheckIfRVDataFileExists = true;
                 }
-                catch 
+                else 
                 {
-                    IsValidationDataExist = false;
+                    CheckIfRVDataFileExists = false;
+                }
+                if (CheckIfRVDataFileExists == false) 
+                {
                     Status = "Error: You have not yet check if your shared secret is the same as server's";
+                    Result = Status;
                 }
-                if (IsValidationDataExist == true) 
+                if (CheckIfRVDataFileExists == true) 
                 {
                     System.IO.File.WriteAllText(Path + "/IDStatus.txt", "Initiating Deletion Of ETLS");
                     ExpirationUTC8Time = DateTime.UtcNow.AddHours(8);
                     System.IO.File.SetLastWriteTime(Path + "/IDStatus.txt", ExpirationUTC8Time);
-                    Status = "Success: You initiated a deletion of ETLS";
+                    System.IO.File.WriteAllBytes(Path + "/RVData.txt", RVDataByte);
+                    Status = Convert.ToBase64String(RVDataByte);
+                    Result = Status;
                 }
             }
             else
             {
                 Status = "Error: Client Path does not exists or deleted...";
+                Result = Status;
             }
-            return Status;
+            return Result;
         }
 
         [HttpGet("DeleteByClientCryptographicID")]
@@ -391,25 +399,21 @@ namespace PriSecFileStorageAPI.Controllers
         }
 
         [HttpGet("BySharedSecret")]
-        public String CheckSharedSecret(String ClientPathID,String CipheredData , String Nonce, String RVData) 
+        public String CheckSharedSecret(String ClientPathID,String CipheredData , String Nonce) 
         {
             String CheckSharedSecretStatus = "";
             Byte[] SharedSecret = new Byte[] { };
             Byte[] CipheredDataByte = new Byte[] { };
             Byte[] NonceByte = new Byte[] { };
-            Byte[] RVDataByte = new Byte[] { };
             Byte[] TestDecryptedByte = new Byte[] { };
             String Path = "{Path to ETLS}";
             Path += ClientPathID;
             String DecodedCipheredData = "";
             String DecodedNonce = "";
-            String DecodedRVData = "";
             Boolean URLDecodeChecker1 = true;
             Boolean URLDecodeChecker2 = true;
-            Boolean URLDecodeChecker3 = true;
             Boolean Base64StringChecker1 = true;
             Boolean Base64StringChecker2 = true;
-            Boolean Base64StringChecker3 = true;
             if (ClientPathID != null && ClientPathID.CompareTo("") != 0)
             {
                 if (Directory.Exists(Path))
@@ -445,22 +449,7 @@ namespace PriSecFileStorageAPI.Controllers
                     {
                         URLDecodeChecker2 = false;
                     }
-                    try
-                    {
-                        if (RVData.Contains("+"))
-                        {
-                            DecodedRVData = RVData;
-                        }
-                        else
-                        {
-                            DecodedRVData = HttpUtility.UrlDecode(RVData);
-                        }
-                    }
-                    catch
-                    {
-                        URLDecodeChecker3 = false;
-                    }
-                    if (URLDecodeChecker1 == true && URLDecodeChecker2 == true && URLDecodeChecker3==true) 
+                    if (URLDecodeChecker1 == true && URLDecodeChecker2 == true) 
                     {
                         try 
                         {
@@ -478,15 +467,7 @@ namespace PriSecFileStorageAPI.Controllers
                         {
                             Base64StringChecker2 = false;
                         }
-                        try 
-                        {
-                            RVDataByte = Convert.FromBase64String(DecodedRVData);
-                        }
-                        catch 
-                        {
-                            Base64StringChecker3 = false;
-                        }
-                        if(Base64StringChecker1==true && Base64StringChecker2 == true && Base64StringChecker3==true) 
+                        if(Base64StringChecker1==true && Base64StringChecker2 == true) 
                         {
                             try 
                             {
@@ -497,7 +478,7 @@ namespace PriSecFileStorageAPI.Controllers
                             {
                                 CheckSharedSecretStatus = "Error: The shared secret does not match";
                             }
-                            System.IO.File.WriteAllBytes(Path + "/RVData.txt",RVDataByte);
+                            System.IO.File.Create(Path + "/Confirmation.txt");
                         }
                         else 
                         {
